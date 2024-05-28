@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Home Control</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f2f2f2;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .container {
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            text-align: center;
+            max-width: 300px;
+            width: 90%;
+        }
+
+        .device {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 40px;
+        }
+
+        .device img {
+            width: 100px;
+            height: auto;
+            margin-bottom: 10px;
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+
+        .toggle-switch input { 
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #2196F3;
+        }
+
+        input:focus + .slider {
+            box-shadow: 0 0 1px #2196F3;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        p {
+            margin: 0;
+            font-size: 16px;
+            color: #555;
+        }
+
+        .status-text {
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        .status-text i {
+            margin-right: 5px;
+        }
+
+        .on {
+            color: #4CAF50;
+        }
+
+        .off {
+            color: #FF6347;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 style="color: #2196F3;">Smart Home Control</h2>
+    
+    <div class="device">
+        <img src="light_icon.png" alt="Light">
+        <label class="toggle-switch">
+            <input type="checkbox" id="lightSwitch" onclick="manualToggle('lightStatus', 'lightSwitch')">
+            <span class="slider"></span>
+        </label>
+        <p id="lightStatus">Light is <span class="status-text off"><i class="fas fa-times-circle"></i>Off</span></p>
+    </div>
+    
+    <div class="device">
+        <img src="fan_icon.png" alt="Fan">
+        <label class="toggle-switch">
+            <input type="checkbox" id="fanSwitch" onclick="manualToggle('fanStatus', 'fanSwitch')">
+            <span class="slider"></span>
+        </label>
+        <p id="fanStatus">Fan is <span class="status-text off"><i class="fas fa-times-circle"></i>Off</span></p>
+    </div>
+</div>
+
+<script src="https://kit.fontawesome.com/a076d05399.js"></script>
+<script>
+    var lightPauseProcessing = false;
+    var fanPauseProcessing = false;
+    var lightPauseTimeout;
+    var fanPauseTimeout;
+
+    // Create a client instance
+    var client = new Paho.MQTT.Client("broker.hivemq.com", 8000, "clientId-" + Math.random());
+
+    // set callback handlers
+    client.onConnectionLost = onConnectionLost;
+    client.onMessageArrived = onMessageArrived;
+
+    // connect the client
+    client.connect({onSuccess:onConnect});
+
+    // called when the client connects
+    function onConnect() {
+        console.log("onConnect");
+        client.subscribe("home/light");
+        client.subscribe("home/fan");
+    }
+
+    // called when the client loses its connection
+    function onConnectionLost(responseObject) {
+        if (responseObject.errorCode !== 0) {
+            console.log("onConnectionLost:" + responseObject.errorMessage);
+        }
+    }
+
+    // called when a message arrives
+    function onMessageArrived(message) {
+        var topic = message.destinationName;
+        var payload = message.payloadString;
+
+        if (topic === "home/light" && !lightPauseProcessing) {
+            if (payload === "light1_on") {
+                document.getElementById('lightSwitch').checked = true;
+                updateStatus('lightStatus', true);
+            } else if (payload === "light1_off") {
+                document.getElementById('lightSwitch').checked = false;
+                updateStatus('lightStatus', false);
+            }
+        } else if (topic === "home/fan" && !fanPauseProcessing) {
+            if (payload === "fan_on") {
+                document.getElementById('fanSwitch').checked = true;
+                updateStatus('fanStatus', true);
+            } else if (payload === "fan_off") {
+                document.getElementById('fanSwitch').checked = false;
+                updateStatus('fanStatus', false);
+            }
+        }
+    }
+
+    function updateStatus(id, isChecked) {
+        var status = document.getElementById(id);
+        if (isChecked) {
+            status.innerHTML = id.charAt(0).toUpperCase() + id.slice(1, -6) + " is <span class='status-text on'><i class='fas fa-check-circle'></i>On</span>";
+        } else {
+            status.innerHTML = id.charAt(0).toUpperCase() + id.slice(1, -6) + " is <span class='status-text off'><i class='fas fa-times-circle'></i>Off</span>";
+        }
+    }
+
+    function manualToggle(statusId, switchId) {
+        var isChecked = document.getElementById(switchId).checked;
+        updateStatus(statusId, isChecked);
+
+        var message;
+        if (statusId === 'lightStatus') {
+            message = new Paho.MQTT.Message(isChecked ? "light1_on" : "light1_off");
+            message.destinationName = "home/light";
+            lightPauseProcessing = true;
+            clearTimeout(lightPauseTimeout);
+            lightPauseTimeout = setTimeout(function() {
+                lightPauseProcessing = false;
+            }, 5000); // 5 Seconds
+        } else if (statusId === 'fanStatus') {
+            message = new Paho.MQTT.Message(isChecked ? "fan_on" : "fan_off");
+            message.destinationName = "home/fan";
+            fanPauseProcessing = true;
+            clearTimeout(fanPauseTimeout);
+            fanPauseTimeout = setTimeout(function() {
+                fanPauseProcessing = false;
+            }, 5000); // 5 Seconds
+        }
+        client.send(message);
+    }
+</script>
+
+</body>
+</html>
